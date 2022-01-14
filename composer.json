@@ -1,0 +1,19 @@
+{
+  "name": "kennethred/seedling",
+  "description": "Seedling",
+
+  "authors": [
+    {
+      "name": "Kenneth de Brabander",
+      "email": "kennethdebrabander@live.nl"
+    }
+  ],
+  "require": {
+    "fakerphp/faker": "^1.15"
+  },
+  "autoload" : {
+    "psr-4": {
+      "Seedling\\": "src"
+    }
+  }
+}
