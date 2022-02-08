@@ -2,8 +2,11 @@
 
 namespace Seedling\Traits;
 
+use Exception;
 use Seedling\Acf\Acf;
 use Seedling\ModelFields;
+use WP_Post;
+use WP_Term;
 
 trait AcfFieldSeederTrait
 {
@@ -23,19 +26,41 @@ trait AcfFieldSeederTrait
         return count($this->acfFactory()) > 0;
     }
 
-    private function seedAcfWithFactory($post)
+    private function seedAcfWithFactory($object)
     {
         foreach ($this->acfFactory() as $key => $value) {
-            update_field($key, $value, $post);
+
+            if ($object instanceof WP_Term) {
+                update_field($key, $value, "term_" . $object->term_id);
+            }
+
+            if ($object instanceof WP_Post) {
+                update_field($key, $value, $object);
+            }
         }
     }
 
-    private function seedAcf($postId)
+    /**
+     * @throws Exception
+     */
+    private function seedAcf($object)
     {
-        $fields = ModelFields::getFieldGroupsByPostType(get_post_type($postId));
+        if ($object instanceof WP_Term) {
+            $fields = ModelFields::getFieldGroupsByTaxonomy($this->type());
 
-        foreach($fields as $field){
-            update_field($field['name'],  Acf::generateFieldData($field), $postId);
+            foreach ($fields as $field) {
+                update_field($field['name'], Acf::generateFieldData($field), "term_" . $object->term_id);
+            }
         }
+
+        if ($object instanceof WP_Post) {
+            $fields = ModelFields::getFieldGroupsByPostType(get_post_type($object->ID));
+
+            foreach ($fields as $field) {
+                update_field($field['name'], Acf::generateFieldData($field), $object->ID);
+            }
+        }
+
+
     }
 }

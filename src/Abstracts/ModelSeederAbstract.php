@@ -2,12 +2,14 @@
 
 namespace Seedling\Abstracts;
 
+use Exception;
 use Seedling\Acf\Acf;
 use Seedling\Commands\ModelSeederCommands;
 use Seedling\SeedlingConfigurator;
 use Seedling\Traits\AcfFieldSeederTrait;
 use Faker\Factory;
 use Illuminate\Support\Str;
+use WP_Post;
 
 abstract class ModelSeederAbstract
 {
@@ -81,6 +83,7 @@ abstract class ModelSeederAbstract
      * post_author : string based on id of user
      * post_category : array of categories
      * page_template : string (template name)
+     * @throws Exception
      */
     public function factory(): array
     {
@@ -97,27 +100,31 @@ abstract class ModelSeederAbstract
         );
     }
 
+    /**
+     * @throws Exception
+     */
     public function seedPost()
     {
         $post = wp_insert_post($this->factory());
-
-        // !!! We mark this post we just created with a _seedling_seeded value of 1 to be able to remove this later on.
-        // @todo: use category instead of this meta-field
+        $postObject = WP_Post::get_instance($post);
         update_field('_seedling_seeded', '1', $post);
 
 
         if ($this->isAcfFactoryNotEmpty()) {
-            $this->seedAcfWithFactory($post);
+            $this->seedAcfWithFactory($postObject);
         }
 
         // When no manual Acf Factory is defined in the model we fall back to seeding all fields.
         if(!$this->isAcfFactoryNotEmpty()){
-            $this->seedAcf($post);
+            $this->seedAcf($postObject);
         }
 
         return $post;
     }
 
+    /**
+     * @throws Exception
+     */
     private function generateGutenbergBlockSnippet(): string
     {
         $output = "";
@@ -151,11 +158,8 @@ abstract class ModelSeederAbstract
              * @todo: check if block already has 'demo-data' set, if so, use that data instead
              */
             foreach ($blockFields as $field) {
-
-                $fieldData = false;
-
                 /*
-                 * When allowEmptyValuesInBlockFactory is true ( either via the model or via command )
+                 * When allowEmptyValuesInBlockFactory is true (either via the model or via command)
                  * we toss a coin to determine of the value should be filled, or should be left empty.
                  * This does respect the required setting of the field.
                  */
