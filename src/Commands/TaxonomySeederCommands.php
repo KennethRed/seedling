@@ -59,7 +59,7 @@ class TaxonomySeederCommands
 
 
     /**
-     * Creates a ter, for this taxonomy
+     * Creates a term for this taxonomy
      *
      * ## OPTIONS
      *

@@ -3,15 +3,23 @@
 namespace Seedling\Abstracts;
 
 use Exception;
-use Seedling\Commands\TaxonomySeederCommands;
-use Seedling\SeedlingConfigurator;
-use Seedling\Traits\AcfFieldSeederTrait;
 use Faker\Factory;
+use WP_Taxonomy;
 use WP_Term;
 
-abstract class TaxonomySeederAbstract
+use Seedling\Commands\TaxonomySeederCommands;
+use Seedling\SeedlingConfigurator;
+
+use Seedling\Interfaces\ConfigInterface;
+use Seedling\Interfaces\HierarchicalInterface;
+use Seedling\Interfaces\TypeInterface;
+
+use Seedling\Traits\AcfFieldSeederTrait;
+use Seedling\Traits\HierarchicalTrait;
+
+abstract class TaxonomySeederAbstract implements TypeInterface, ConfigInterface, HierarchicalInterface
 {
-    use AcfFieldSeederTrait;
+    use AcfFieldSeederTrait, HierarchicalTrait;
 
     private SeedlingConfigurator $seedlingConfigurator;
 
@@ -20,13 +28,6 @@ abstract class TaxonomySeederAbstract
         $this->seedlingConfigurator = $seedlingConfigurator;
         new TaxonomySeederCommands($this);
     }
-
-    /**
-     * @return string
-     *
-     * Should be equal to the taxonomy type that you want to create
-     */
-    abstract function type(): string;
 
     /**
      * @return array
@@ -48,35 +49,6 @@ abstract class TaxonomySeederAbstract
         return $this->config()['limit'] ?? $this->seedlingConfigurator->defaultLimit();
     }
 
-    public function hierarchical(): bool
-    {
-        return $this->config()['hierarchical'] ?? false;
-    }
-
-    /**
-     * @throws Exception
-     */
-    public function retrievePossibleParent(): int
-    {
-        if (!$this->hierarchical()) {
-            return false;
-        }
-
-        // get count of current type of taxonomies
-        $terms = get_terms($this->type());
-
-        if (isset($terms) and !is_wp_error($terms)
-            and is_array($terms) and !empty($terms)) {
-
-            $totalTerms = count($terms);
-
-            // there is a 25% chance that we will return a parent, 75% chance of false.
-            return $terms[random_int(0, $totalTerms * 4)] ?? false;
-        }
-
-        return false;
-    }
-
     /**
      * @throws Exception
      */
@@ -84,10 +56,8 @@ abstract class TaxonomySeederAbstract
     {
         $faker = Factory::create();
 
-        $taxonomyName = $faker->word();
-
         return [
-            'term' => $taxonomyName,
+            'term' => $this->nameDuplicateHandler($faker->word()),
             'args' => [
                 'description' => $faker->text(50),
                 'parent' => $this->retrievePossibleParent()
@@ -95,17 +65,33 @@ abstract class TaxonomySeederAbstract
         ];
     }
 
+    private function nameDuplicateHandler($name): string
+    {
+        if (get_term_by('name', $name, $this->type()) instanceof WP_Term) {
+            // A duplicate.
+            $name = $this->nameDuplicateHandler($this->regenerateName($name));
+        }
+
+        return $name;
+    }
+
+    private function regenerateName($name): string
+    {
+        $faker = Factory::create();
+        return "$name $faker->word";
+    }
+
     /**
      * @return WP_Term
+     * @throws Exception
      */
     public function seedTerm(): WP_Term
     {
         /** @var WP_Term $term */
         $term = wp_insert_term($this->factory()['term'], $this->type(), $this->factory()['args']);
-
         $termObject = WP_Term::get_instance($term['term_id'], $this->type());
 
-        update_field('_seedling_seeded', '1', "term_". $termObject->term_id);
+        update_field('_seedling_seeded', '1', "term_" . $termObject->term_id);
 
         if ($this->isAcfFactoryNotEmpty()) {
             $this->seedAcfWithFactory($termObject);
@@ -117,6 +103,25 @@ abstract class TaxonomySeederAbstract
         }
 
         return $termObject;
+    }
+
+    /**
+     * @return bool
+     *
+     * First we check the config array if hierarchical is set
+     * if not found we then check the taxonomy settings itself for a hierarchical tag.
+     *
+     */
+    public function hierarchical(): bool
+    {
+        if(isset($this->config()['hierarchical'])){
+            return $this->config()['hierarchical'];
+        }
+
+        /** @var WP_Taxonomy $taxonomy */
+        $taxonomy = get_taxonomy($this->type());
+
+        return $taxonomy->hierarchical ?? false;
     }
 
 }

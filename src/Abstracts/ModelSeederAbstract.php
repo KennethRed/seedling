@@ -3,17 +3,29 @@
 namespace Seedling\Abstracts;
 
 use Exception;
-use Seedling\Acf\Acf;
-use Seedling\Commands\ModelSeederCommands;
-use Seedling\SeedlingConfigurator;
-use Seedling\Traits\AcfFieldSeederTrait;
 use Faker\Factory;
 use Illuminate\Support\Str;
+
 use WP_Post;
 
-abstract class ModelSeederAbstract
+use Seedling\Acf\Acf;
+use Seedling\SeedlingConfigurator;
+
+use Seedling\Interfaces\ConfigInterface;
+use Seedling\Interfaces\HierarchicalInterface;
+use Seedling\Interfaces\TypeInterface;
+
+use Seedling\Traits\AcfFieldSeederTrait;
+use Seedling\Traits\HierarchicalTrait;
+
+use Seedling\Commands\ModelSeederCommands;
+
+
+abstract class ModelSeederAbstract implements TypeInterface, ConfigInterface, HierarchicalInterface
 {
     use AcfFieldSeederTrait;
+    use HierarchicalTrait;
+
     /**
      * @var bool
      *
@@ -35,13 +47,6 @@ abstract class ModelSeederAbstract
     }
 
     /**
-     * @return string
-     *
-     * Should be equal to the model type that you want to create
-     */
-    abstract function type(): string;
-
-    /**
      * @return array
      *
      * specify configuration settings for this seeder.
@@ -61,7 +66,6 @@ abstract class ModelSeederAbstract
         return $this->config()['limit'] ?? $this->seedlingConfigurator->defaultLimit();
     }
 
-
     /**
      * @return array
      *
@@ -71,7 +75,6 @@ abstract class ModelSeederAbstract
     {
         return [];
     }
-
 
     /**
      * @return array
@@ -94,9 +97,7 @@ abstract class ModelSeederAbstract
             'post_content' => $this->generateGutenbergBlockSnippet(),
             'post_status' => "publish",
             'post_type' => $this->type(),
-//            'post_author' => "1",
-//            'post_category' => [],
-//            'page_template' => "null",
+            'post_parent' => $this->retrievePossibleParent(),
         );
     }
 
@@ -108,7 +109,6 @@ abstract class ModelSeederAbstract
         $post = wp_insert_post($this->factory());
         $postObject = WP_Post::get_instance($post);
         update_field('_seedling_seeded', '1', $post);
-
 
         if ($this->isAcfFactoryNotEmpty()) {
             $this->seedAcfWithFactory($postObject);
@@ -138,23 +138,16 @@ abstract class ModelSeederAbstract
 
             $attrs = [];
             $blockName = esc_html($blockName);
-
-            $faker = Factory::create();
-
             $attrs['name'] = $blockName;
 
             // Setting the id is required, otherwise values won't be shown
             // when viewing the page without manually saving.
-
             $attrs['id'] = "block_" . Str::lower(Str::random(8));
+
             $blockFields = acf_get_block_fields(['name' => $blockName]);
 
             /*
              * Dynamically set value for each first-level acf field based on type.
-             * @todo: test with nested fields
-             * @todo: extend with select and relation if possible
-             * @todo: extend with link
-             * @todo: extend with repeaters
              * @todo: check if block already has 'demo-data' set, if so, use that data instead
              */
             foreach ($blockFields as $field) {
@@ -184,8 +177,24 @@ abstract class ModelSeederAbstract
             $output .= $blockStringData;
 
         }
-
         return $output;
     }
 
+    /**
+     * @return bool
+     *
+     * First we check the config array if hierarchical is set
+     * if not found we then check the post Type object itself for a hierarchical tag.
+     *
+     */
+    public function hierarchical(): bool
+    {
+        if(isset($this->config()['hierarchical'])){
+            return $this->config()['hierarchical'];
+        }
+
+        $postTypeObject = get_post_type_object($this->type());
+
+        return $postTypeObject->hierarchical ?? false;
+    }
 }

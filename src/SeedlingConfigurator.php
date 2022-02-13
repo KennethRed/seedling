@@ -96,7 +96,7 @@ class SeedlingConfigurator
      * wp seed start --fresh
      * @when after_wp_load
      */
-    public function seedStart()
+    public function seedStart($args, $assoc_args)
     {
         if (class_exists('WP_CLI')) {
 
@@ -109,6 +109,25 @@ class SeedlingConfigurator
                         wp_delete_post($post->ID, true);
                     }
                     WP_CLI::log("Deleted All previously seeded " . $postType . " models...");
+                }
+
+                foreach ($this->taxonomies() as $taxonomy) {
+                    $terms = get_terms([
+                        'taxonomy' => $taxonomy,
+                        'hide_empty' => false,
+                        'meta_query' => [
+                            [
+                                'key' => '_seedling_seeded',
+                                'value' => 1,
+                                'compare' => 'LIKE'
+                            ]
+                        ]
+                    ]);
+                    foreach ($terms as $term) {
+                        wp_delete_term($term->term_id, $taxonomy);
+                    }
+
+                    WP_CLI::log("Deleted All previously seeded " . $taxonomy . " terms...");
                 }
             }
 

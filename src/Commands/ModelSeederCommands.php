@@ -155,7 +155,7 @@ class ModelSeederCommands
             wp_delete_post($post->ID, true);
         }
 
-        WP_CLI::log("Deleted All previously seeded " . $this->model->type() . " Posts...");
+        WP_CLI::log("Deleted All previously seeded " . $this->modelSeeder->type() . " Posts...");
     }
 
     /**
@@ -163,10 +163,10 @@ class ModelSeederCommands
      */
     private function deleteAllPosts()
     {
-        foreach (get_posts(['post_type' => $this->model->type(), 'posts_per_page' => 99999]) as $post) {
+        foreach (get_posts(['post_type' => $this->modelSeeder->type(), 'posts_per_page' => 99999]) as $post) {
             wp_delete_post($post->ID, true);
         }
 
-        WP_CLI::log("Deleted All " . $this->model->type() . " Posts...");
+        WP_CLI::log("Deleted All " . $this->modelSeeder->type() . " Posts...");
     }
 }
