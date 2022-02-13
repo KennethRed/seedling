@@ -4,6 +4,7 @@ namespace Seedling;
 
 use Seedling\Abstracts\ModelSeederAbstract;
 
+use Seedling\Abstracts\TaxonomySeederAbstract;
 use WP_CLI;
 
 class SeedlingConfigurator
@@ -30,6 +31,8 @@ class SeedlingConfigurator
 
     private array $modelSeeders = [];
 
+    private array $taxonomySeeders = [];
+
     private array $buildCommands = [];
 
     public function __construct($config = [])
@@ -43,6 +46,20 @@ class SeedlingConfigurator
         return get_post_types(['public' => true]);
     }
 
+    private function taxonomies(): array
+    {
+        $blackListedTaxonomies = [
+            'post_format',
+            'nav_menu',
+            'link_category',
+            'wp_theme'
+        ];
+
+        return array_filter(get_taxonomies(), function ($k) use ($blackListedTaxonomies) {
+            return in_array($k, $blackListedTaxonomies) ? false : $k;
+        });
+    }
+
     private function initialize()
     {
         if (class_exists('WP_CLI')) {
@@ -53,6 +70,14 @@ class SeedlingConfigurator
                 $this->modelSeeders[$postType] = $modelSeeder;
                 $this->buildCommands[] = "seed create model $postType --limit=$limit";
             }
+
+            foreach($this->taxonomies() as $taxonomy){
+                $taxonomySeeder = $this->generateAnonymousTaxonomySeeder($this, $taxonomy);
+                $this->taxonomySeeders[$taxonomy] = $taxonomySeeder;
+
+                $this->buildCommands[] = "seed create taxonomy $taxonomy --limit=$limit";
+            }
+
             WP_CLI::add_command("seed start", array($this, 'seedStart'));
         }
     }
@@ -77,7 +102,7 @@ class SeedlingConfigurator
 
             if (isset($assoc_args['fresh']) || isset($assoc_args['f'])) {
 
-                foreach ($this->postTypes() as $postType){
+                foreach ($this->postTypes() as $postType) {
                     foreach (get_posts([
                         'post_type' => $postType, 'posts_per_page' => 99999,
                         'meta_key' => '_seedling_seeded', 'meta_value' => '1']) as $post) {
@@ -114,6 +139,31 @@ class SeedlingConfigurator
             public function config(): array
             {
                 return $this->seedlingConfigurator->config['models'][$this->type] ?? [];
+            }
+        };
+    }
+
+    private function generateAnonymousTaxonomySeeder(SeedlingConfigurator $seedlingConfigurator, $taxonomy): TaxonomySeederAbstract
+    {
+        return new class($seedlingConfigurator, $taxonomy) extends TaxonomySeederAbstract {
+            private string $type;
+            private SeedlingConfigurator $seedlingConfigurator;
+
+            public function __construct(SeedlingConfigurator $seedlingConfigurator, string $type)
+            {
+                $this->type = $type;
+                $this->seedlingConfigurator = $seedlingConfigurator;
+                parent::__construct($seedlingConfigurator);
+            }
+
+            public function type(): string
+            {
+                return $this->type;
+            }
+
+            public function config(): array
+            {
+                return $this->seedlingConfigurator->config['taxonomy'][$this->type] ?? [];
             }
         };
     }
